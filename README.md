@@ -1,17 +1,17 @@
-raw0913为最初始的数据，98155条记录和35个变量。
+raw0913 is raw data that drag from database，contains 98155 records and 35 variances.
 
-smp0913为选择的的4200条记录和35个变量
+smp0913 contains 4200 records and 35 variances, which are randomly picked from raw0913
 
-val_index为smp0913对应的35个变量以及其对应的索引
+val_index is the index of 35 variances in smp0913.
+val_index_28new is the index of 35 variances in Use_data_raw.
 
-Use_data_raw.npy为数据集，最终建模咱用的原始数据集，也就是Data_random_splt.py文件最终生成的，4200条记录和28个字段。
+Use_data_raw.npy is the python formed database, which will be used for modeling. It's generaged by Data_random_splt.py, containing 4200 records and 28 variance。
 
-Information_value.py为外调的class，用于计算iv和woe，在Data_random_splt.py需要更改为你的保存路径才能调用。
+Information_value.py is a class file to calculate iv and woe. To use the class, you need to change the file rote to yours in python file Data_random_splt.py.
 
-Data_random_splt.py的功能如下：
-1、	实现取840个坏人，3360个好人。（随机seed=1000）
-2、	计算原始变量的woe和iv，并剔除iv<0.03的7个变量，生成最终表use_data_raw，该表字段对应序列及操作见文件【字段.xlsx】的sheet use字段。
+Data_random_splt.py：
+1. Pick 840 bad men and 3360 good men randomly.(random seed=1000)
+2. calculate the woe and iv for all variances, remove 7 variance whose iv<0.03.
 
-字段.xlsx包括了初始raw字段的索引、剔除不显著后的索引、以及woe分组信息。
 
-woe_splt.py为将Use_data_raw.npy根据woe相近的分组。
+woe_splt_vX.py is file that used to grouping variance in Use_data_raw.npy.
