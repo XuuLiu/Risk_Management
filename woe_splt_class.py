@@ -181,18 +181,22 @@ class group_by_woe():
     def str_splt(self, use_data_raw, use_data_target, val_index):
 
         '''
-        str_no为字符型字段的个数
-        woe_raw为未分组时全部字段的woe
-        use_data_raw为使用的未分箱的数据
+        This is used to group discrete variable
+        
+        use_data_raw为使用的未分箱的数据 are raw data that need to be grouped.
 
-        离散型变量的自动分组(离散变量的列0:15,15个）
         1. 如果变量取值有大于等于5种才考虑分箱
+            Only if the raw discrete variable has more than 5 values that will be regrouped.
         2. 离散数据每个取值之间的距离默认为单位距离
+            Every value of discrete variable has unit distance.
         3. 分类后的IV值/原本的IV值要>=0.8
-        4. 聚类采用层次聚类，且最大类别数为10
-        5. 因为我懒，所以采用先分类再看IV值是否满足条件3，如果不满足，则返回空，这样一点也不鲁棒'''
+            IV before grouped/IV after grouped >=0.8
+        4. 聚类采用系统聚类，且最大类别数为8
+            Here use hierarchical clustering to group discrete variable values, and the maximum of group number is 8
+        5. 因为我懒，所以采用先分类再看IV值是否满足条件3，如果不满足，则返回空，这样一点也不鲁棒
+            Here check IV after cluster, if IV not satisfy the rule 3, the function will return []'''
 
-        # 需要分箱的离散变量
+        # find discrete variable that need to be grouped
         str_no=np.shape(use_data_raw)[1]
 
         Woe=WOE(None)
@@ -203,13 +207,13 @@ class group_by_woe():
             if len(woe_raw[i]) >= 5:
                 need_group.append(i)
 
-        # 该表为分箱因子表，若有分箱则改vector那个表，没有就保留原值
+        # If there happens grouping, the result will be stored is the use_data_vector, or keep its raw value
+        #若有分箱则改vector那个表，没有就保留原值
         use_data_vector = np.zeros(np.shape(use_data_raw))
         use_data_vector = use_data_vector.astype(np.str)
         use_data_vector = use_data_raw.copy()
 
         for i in need_group:
-            # i=9
             print('Im working hard on grouping the %dth variance, may cost a little bit long time, plz wait :)' % i)
             woe = []
             woe.append(list(woe_raw[i].keys()))
@@ -217,32 +221,37 @@ class group_by_woe():
             woe = np.array(woe).T
 
             # 生成点与点之间的距离矩阵,这里用的欧氏距离:
+            # Generate the distance matrix of every value's WOE, here use euclidean distance
             disMat = sch.distance.pdist(woe[:, 1].reshape(np.shape(woe)[0], 1), 'euclidean')
             # 进行层次聚类:
+            # hierarchical clustering
             Z = sch.linkage(disMat, method='average')
             # 将层级聚类结果以树状图表示出来
             # P=sch.dendrogram(Z)
             # 根据linkage matrix Z得到聚类结果:
+            # Return clustering result according to linkage matrix Z
             cluster = sch.fcluster(Z, t=1, criterion='inconsistent')
             plus = 0
-            while max(cluster) > 7:  # 无限循环
+            while max(cluster) > 7:  
                 cluster = sch.fcluster(Z, t=1 + plus, criterion='inconsistent')
                 plus += 0.001
                 if max(cluster) < 7 and max(cluster) > 2:
                     break
 
-            # 分箱字典
+            # dictionary of grouping reuslt
             dic = np.hstack((woe, cluster.reshape(np.shape(cluster)[0], 1)))
 
-            # 将分组放到数据中
+            # replace raw data by its grouping result
             for j in range(np.shape(use_data_raw)[0]):
                 for k in range(np.shape(dic)[0]):
                     if use_data_raw[j, i] == dic[k, 0]:
                         use_data_vector[j, i] = dic[k, 2]
-            # 计算此时的woe和iv
+                        
+            # calculate woe and iv of grouped data
             Woe = WOE(None)
             woe_group, iv_group = Woe.woe(use_data_vector[:, i].reshape(np.shape(use_data_vector)[0], 1),use_data_target, event='1')
-            # 生成该变量分组后的字典
+            
+            # generate the formated dictionary for output
             out_dic = self.gener_dic(iv_group, woe_group, dic, iv_raw, i)
             if len(out_dic) > 0:
                 self.ExportData(out_dic, r'%s\dic_of_%d%s.txt' % (self.save_root, i, val_index[i, 1]))
@@ -251,7 +260,9 @@ class group_by_woe():
         return use_data_vector
 
     def flt_splt(self,use_data_raw, use_data_target,val_index):
-        # i=22
+        '''
+        This is used to group continuous variable
+        '''
         for i in range(np.shape(use_data_raw)[1] ):
             print('Im working hard on grouping the %dth variance, may cost a little bit long time, plz wait :)' % i)
             group_data, woe_splt = self.flt_splt_single(i, use_data_raw,use_data_target)
@@ -264,9 +275,13 @@ class group_by_woe():
         return use_data_raw
 
     def gener_dic(self,iv_group, woe_group, dic, iv_raw, i):
-        '''离散型数据的分组结果
-        生成因子与分箱的字典，第一列为分组，第二列为对应的该分组的取值
-        第三列为该变量分组后的iv值，并保证分组后的iv/分组前的iv>0.8，第四列为该分组的woe'''
+        '''
+        the result of grouping discrete variable 离散型数据的分组结果
+        the first column is group index   第一列为分组
+        the second column is what values are in this group  第二列为对应的该分组的取值
+        the third colmun is IV after grouping   第三列为该变量分组后的iv值，并保证分组后的iv/分组前的iv>0.8
+        the fourth column is WOE of every group  第四列为该分组的woe
+        '''
         if iv_raw[i] / iv_group[0] > 0.8:
             out = list(set(dic[:, 2]))
             out.sort()
@@ -300,14 +315,19 @@ class group_by_woe():
         return out_dit
 
     def flt_splt_single(self,i, use_data_raw,use_data_target):
-        '''对连续性的变量进行分箱
-        i为该变量在数据集中的列数
-        use_data_raw初始的数据集
+        '''
+        This is used to group one continuous variable     对连续性的变量进行分箱
+        
+        i is the volumn index of variable  为该变量在数据集中的列数
+        use_data_raw is raw data set 初始的数据集
         '''
 
         group_i = use_data_raw[:, i].copy()
 
         # 第一步，将数据分为50组，阈值为分位数。
+        # the 1st step, divided data into 50 groups and the thresholds are their percentile. May be group number is less than 50 , 
+        # because reduplicated percentile.
+        
         threshold = []
         for t in range(50):
             threshold.append(np.percentile(group_i.astype(np.float), t * 2))
@@ -317,24 +337,27 @@ class group_by_woe():
         group_i = self.replace_threshold(group_i, threshold)
         Woe = WOE(None)
         woe_group_1, iv_group_1 = Woe.woe(group_i.reshape(np.shape(group_i)[0], 1),use_data_target, event='1')
-        iv_group_new = iv_group_1[0]  # 初始设置iv
+        iv_group_new = iv_group_1[0]  # iv the first step
         woe_i_sort = np.hstack(
             ((np.array(list(woe_group_1[0].keys()))).reshape(np.shape(np.array(list(woe_group_1[0].keys())))[0], 1), \
              (np.array(list(woe_group_1[0].values()))).reshape(np.shape(np.array(list(woe_group_1[0].keys())))[0], 1)))
-        # 此处是用作排序的
+        # just for sort
         woe_i_sort = woe_i_sort.astype(np.float).copy()
         woe_i_sort = woe_i_sort[np.lexsort(woe_i_sort[:, ::-1].T)]
 
         # 第二步，合并woe差距小的分组
+        # the 2nd step, combine groups whose WOE are close
+        
         gap = 0
-        while (iv_group_new / iv_group_1)[0] >= 0.8:  # 循环，往小的数合并，并改为小的数
+        while (iv_group_new / iv_group_1)[0] >= 0.8:  
+            # check whether it can be combined with the group that is prior 往小的数合并，并改为小的数
             for j in range(np.shape(woe_i_sort)[0] - 1):
                 if abs(woe_i_sort[j + 1, 1] - woe_i_sort[j, 1]) <= gap:
                     woe_i_sort[j + 1, 0] = woe_i_sort[j, 0]
             threshold = list(set(woe_i_sort[:, 0]))
             threshold.sort()
             group_i = self.replace_threshold(group_i, threshold)
-            # 计算新group_i对应的iv和woe
+            # calculate the IV and WOE of group_iv 计算新group_i对应的iv和woe
             Woe = WOE(None)
             woe_group_new, iv_group_new = Woe.woe(group_i.reshape(np.shape(group_i)[0], 1),use_data_target, event='1')
             woe_i_sort = np.hstack(
@@ -342,7 +365,6 @@ class group_by_woe():
                                                                    1), \
                  (np.array(list(woe_group_new[0].values()))).reshape(
                      np.shape(np.array(list(woe_group_new[0].keys())))[0], 1)))
-            # 此处是用作排序的
             woe_i_sort = woe_i_sort.astype(np.float).copy()
             woe_i_sort = woe_i_sort[np.lexsort(woe_i_sort[:, ::-1].T)]
             gap += 0.1
@@ -351,7 +373,7 @@ class group_by_woe():
         return group_i, woe_i_sort
 
     def replace_threshold(self,group_i, threshold):
-        # 将数值改为他属于的分段的下限，左闭右开
+        # if a in [b,c) then change a to b   将数值改为他属于的分段的下限，左闭右开
         for g in range(np.shape(group_i)[0]):
             for t in range(np.shape(threshold)[0] - 1):
                 if float(group_i[g]) >= threshold[t] and float(group_i[g]) < threshold[t + 1]:
@@ -362,7 +384,7 @@ class group_by_woe():
 
 
 
-    def ExportData(self,data, fileName):  # 导出
+    def ExportData(self,data, fileName):  # export
         f = open(fileName, 'w')
         for i in data:
             k = '\t'.join([str(j) for j in i])
