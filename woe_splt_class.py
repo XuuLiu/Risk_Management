@@ -383,7 +383,6 @@ class group_by_woe():
         return group_i
 
 
-
     def ExportData(self,data, fileName):  # export
         f = open(fileName, 'w')
         for i in data:
